@@ -1,7 +1,22 @@
 import pygame
-from constants import PLAYER_RADIUS, PLAYER_TURN_SPEED, PLAYER_SPEED
+from constants import PLAYER_RADIUS, PLAYER_TURN_SPEED, PLAYER_SPEED, PLAYER_SHOOT_SPEED, PLAYER_SHOOT_COOLDOWN
 
 class Player(pygame.sprite.Sprite):
+
+    def shoot(self):
+        if self.shoot_timer > 0:
+            return
+        from shot import Shot
+        direction = pygame.Vector2(0, 1).rotate(self.rotation)
+        velocity = direction * PLAYER_SHOOT_SPEED
+        Shot(self.position.x, self.position.y, velocity)
+        self.shoot_timer = PLAYER_SHOOT_COOLDOWN
+    @property
+    def radius(self):
+        return PLAYER_RADIUS
+    @property
+    def position(self):
+        return pygame.Vector2(self.rect.center)
     def move(self, dt):
         direction = pygame.Vector2(0, 1).rotate(self.rotation)
         movement = direction * PLAYER_SPEED * dt
@@ -15,6 +30,7 @@ class Player(pygame.sprite.Sprite):
         pygame.draw.polygon(self.image, "white", [(PLAYER_RADIUS, 0), (0, PLAYER_RADIUS), (PLAYER_RADIUS, PLAYER_RADIUS * 2)], 2)
         self.rect = self.image.get_rect(center=(x, y))
         self.rotation = 0
+        self.shoot_timer = 0
     def triangle(self):
         forward = pygame.Vector2(0, 1).rotate(self.rotation)
         right = pygame.Vector2(0, 1).rotate(self.rotation + 90) * PLAYER_RADIUS / 1.5
@@ -30,6 +46,8 @@ class Player(pygame.sprite.Sprite):
         self.rotation += PLAYER_TURN_SPEED * dt
 
     def update(self, dt):
+        if self.shoot_timer > 0:
+            self.shoot_timer -= dt
         keys = pygame.key.get_pressed()
         if keys[pygame.K_a]:
             self.rotate(-dt)
@@ -39,3 +57,5 @@ class Player(pygame.sprite.Sprite):
             self.move(dt)
         if keys[pygame.K_s]:
             self.move(-dt)
+        if keys[pygame.K_SPACE]:
+            self.shoot()
