@@ -1,7 +1,14 @@
 import pygame
-from constants import PLAYER_RADIUS, PLAYER_TURN_SPEED
+from constants import PLAYER_RADIUS, PLAYER_TURN_SPEED, PLAYER_SPEED
 
 class Player(pygame.sprite.Sprite):
+    def move(self, dt):
+        direction = pygame.Vector2(0, 1).rotate(self.rotation)
+        movement = direction * PLAYER_SPEED * dt
+        center = pygame.Vector2(self.rect.center)
+        center += movement
+        self.rect.center = (center.x, center.y)
+
     def __init__(self, x, y):
         super().__init__()
         self.image = pygame.Surface((PLAYER_RADIUS * 2, PLAYER_RADIUS * 2), pygame.SRCALPHA)
@@ -28,3 +35,7 @@ class Player(pygame.sprite.Sprite):
             self.rotate(-dt)
         if keys[pygame.K_d]:
             self.rotate(dt)
+        if keys[pygame.K_w]:
+            self.move(dt)
+        if keys[pygame.K_s]:
+            self.move(-dt)
