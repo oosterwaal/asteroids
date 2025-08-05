@@ -1,7 +1,7 @@
 import pygame
 import random
-from asteroid import Asteroid
-from constants import *
+from enemies.asteroid import Asteroid
+from mainlogic.constants import *
 
 
 class AsteroidField:

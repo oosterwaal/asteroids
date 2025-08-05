@@ -1,6 +1,7 @@
 #screen constants
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
+
 #Asteroid constants
 ASTEROID_MIN_RADIUS = 20
 ASTEROID_KINDS = 3

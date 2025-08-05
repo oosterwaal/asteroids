@@ -1,12 +1,30 @@
 import pygame
-from constants import PLAYER_RADIUS, PLAYER_TURN_SPEED, PLAYER_SPEED, PLAYER_SHOOT_SPEED, PLAYER_SHOOT_COOLDOWN
+from mainlogic.constants import PLAYER_RADIUS, PLAYER_TURN_SPEED, PLAYER_SPEED, PLAYER_SHOOT_SPEED, PLAYER_SHOOT_COOLDOWN
 
 class Player(pygame.sprite.Sprite):
+    def collides_with(self, other):
+        # Triangular hitbox: check if any triangle vertex is inside the other, or if any edge intersects the other's circle
+        triangle = self.triangle()
+        # Check if any vertex is inside the other's circle
+        for pt in triangle:
+            if pt.distance_to(other.position) < other.radius:
+                return True
+        # Check if any edge intersects the other's circle
+        for i in range(3):
+            a = triangle[i]
+            b = triangle[(i+1)%3]
+            ab = b - a
+            ap = other.position - a
+            t = max(0, min(1, ap.dot(ab) / ab.length_squared() if ab.length_squared() else 0))
+            closest = a + ab * t
+            if closest.distance_to(other.position) < other.radius:
+                return True
+        return False
 
     def shoot(self):
         if self.shoot_timer > 0:
             return
-        from shot import Shot
+        from player.weapons.shot import Shot
         direction = pygame.Vector2(0, 1).rotate(self.rotation)
         velocity = direction * PLAYER_SHOOT_SPEED
         Shot(self.position.x, self.position.y, velocity)
@@ -19,7 +37,8 @@ class Player(pygame.sprite.Sprite):
         return pygame.Vector2(self.rect.center)
     def move(self, dt):
         direction = pygame.Vector2(0, 1).rotate(self.rotation)
-        movement = direction * PLAYER_SPEED * dt
+        speed = PLAYER_SPEED * getattr(self, 'speed_boost', 1.0)
+        movement = direction * speed * dt
         center = pygame.Vector2(self.rect.center)
         center += movement
         self.rect.center = (center.x, center.y)

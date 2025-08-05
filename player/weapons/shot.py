@@ -1,6 +1,6 @@
 import pygame
-from circleshape import CircleShape
-from constants import SHOT_RADIUS, PLAYER_SHOOT_SPEED, PLAYER_SHOOT_COOLDOWN
+from mainlogic.circleshape import CircleShape
+from mainlogic.constants import SHOT_RADIUS, PLAYER_SHOOT_SPEED, PLAYER_SHOOT_COOLDOWN
 
 class Shot(CircleShape):
     containers = []
