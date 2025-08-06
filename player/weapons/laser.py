@@ -20,9 +20,14 @@ class Laser:
         # Calculate laser direction
         angle_rad = math.radians(self.player.rotation - 270)
         start_pos = pygame.Vector2(self.player.position.x, self.player.position.y)
+        # Limit laser length to twice the ship's size
+        if hasattr(self.player.rect, 'width'):
+            max_length = 2 * self.player.rect.width
+        else:
+            max_length = 2 * getattr(self.player, 'radius', 40)
         end_pos = pygame.Vector2(
-            self.player.position.x + math.cos(angle_rad) * SCREEN_WIDTH,
-            self.player.position.y + math.sin(angle_rad) * SCREEN_WIDTH
+            self.player.position.x + math.cos(angle_rad) * max_length,
+            self.player.position.y + math.sin(angle_rad) * max_length
         )
         # Destroy asteroids in path
         for asteroid in list(asteroids):
@@ -42,8 +47,13 @@ class Laser:
             return
         angle_rad = math.radians(self.player.rotation - 270)
         start_pos = (int(self.player.position.x), int(self.player.position.y))
+        # Limit laser length to twice the ship's size
+        if hasattr(self.player.rect, 'width'):
+            max_length = 2 * self.player.rect.width
+        else:
+            max_length = 2 * getattr(self.player, 'radius', 40)
         end_pos = (
-            int(self.player.position.x + math.cos(angle_rad) * SCREEN_WIDTH),
-            int(self.player.position.y + math.sin(angle_rad) * SCREEN_WIDTH)
+            int(self.player.position.x + math.cos(angle_rad) * max_length),
+            int(self.player.position.y + math.sin(angle_rad) * max_length)
         )
         pygame.draw.line(screen, self.color, start_pos, end_pos, self.width)

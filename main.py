@@ -1,3 +1,4 @@
+
 import pygame
 from mainlogic.constants import *
 from player import Player
@@ -5,25 +6,6 @@ from enemies.asteroid import Asteroid
 from environment.asteroidfield import AsteroidField
 
 def main():
-    def show_start_screen():
-        start_font = pygame.font.SysFont(None, 72)
-        info_font = pygame.font.SysFont(None, 36)
-        waiting = True
-        while waiting:
-            screen.fill((10, 10, 30))
-            title = start_font.render("ASTEROIDS", True, (255,255,255))
-            prompt = info_font.render("Press ENTER to Start", True, (0,255,0))
-            screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, SCREEN_HEIGHT//2 - 120))
-            screen.blit(prompt, (SCREEN_WIDTH//2 - prompt.get_width()//2, SCREEN_HEIGHT//2))
-            pygame.display.flip()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        waiting = False
-                        break
 
     # Key bindings dictionary
     key_bindings = {
@@ -80,9 +62,7 @@ def main():
                                     pygame.quit()
                                     exit()
         return
-    from player.weapons.laser import Laser
-    laser_active = False
-    laser_weapon = None
+    # Laser feature removed
     # Power-up state
     shield_active = False
     # shield lasts until hit
@@ -102,12 +82,24 @@ def main():
     shield_icon = FONT.render("SHIELD", True, (0,200,255))
     speed_icon = FONT.render("SPEED", True, (0,255,0))
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # Load background images for each level
+    background_images = []
+    for i in range(1, 11):
+        try:
+            img = pygame.image.load(f"backgrounds/background{i}.png").convert()
+            img = pygame.transform.scale(img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            background_images.append(img)
+        except Exception:
+            # If image not found, use a solid color
+            bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            bg.fill((10 + i*10, 10 + i*10, 30 + i*10))
+            background_images.append(bg)
     score = 0
     lives = 3
     respawn_timer = 0
     # Multi-level system
     level = 1
-    level_cleared = False
+    level_cleared = False  # Ensure level does not start as complete
     max_level = 10  # You can adjust this as needed
     HIGHSCORE_FILE = "highscores.json"
     highscores = []
@@ -228,7 +220,43 @@ def main():
             json.dump(highscores, f)
     # Only keep the correct add_highscore function (already defined above)
     # ...existing code...
+    def destroy_asteroid(asteroid):
+        """
+        Handles splitting and removal of asteroids, and increments score.
+        """
+        # Only increment score if asteroid was alive before
+        was_alive = asteroid.alive()
+        r = getattr(asteroid, 'radius', 0)
+        small_limit = max(PLAYER_RADIUS, player.rect.width // 2) * 1.5
+        if r <= small_limit:
+            asteroid.kill()
+        else:
+            if hasattr(asteroid, 'split'):
+                asteroid.split()
+            asteroid.kill()
+        if was_alive and not asteroid.alive():
+            nonlocal score
+            score += 1
 
+    def show_start_screen():
+        start_font = pygame.font.SysFont(None, 72)
+        info_font = pygame.font.SysFont(None, 36)
+        waiting = True
+        while waiting:
+            screen.fill((10, 10, 30))
+            title = start_font.render("ASTEROIDS", True, (255,255,255))
+            prompt = info_font.render("Press ENTER to Start", True, (0,255,0))
+            screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, SCREEN_HEIGHT//2 - 120))
+            screen.blit(prompt, (SCREEN_WIDTH//2 - prompt.get_width()//2, SCREEN_HEIGHT//2))
+            pygame.display.flip()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        waiting = False
+                        break
     player = Player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
     updatable = [player]
     drawable = [player]
@@ -264,71 +292,140 @@ def main():
             s.kill()
         # Load environment settings for this level
         env = get_environment_for_level(lvl)
-        num_asteroids = env.get('num_asteroids', min(3 + lvl * 2, 30))
-        asteroid_sizes = env.get('asteroid_sizes', [2, 3])
-        # Spawn asteroids based on environment config
-        for _ in range(num_asteroids):
-            ax = random.randint(50, SCREEN_WIDTH-50)
-            ay = random.randint(50, SCREEN_HEIGHT-50)
-            radius = random.choice(asteroid_sizes)
-            asteroid = Asteroid(ax, ay, radius)
-            # Assign random velocity
-            angle = random.uniform(0, 2 * math.pi)
-            speed = random.uniform(80, 180)
-            asteroid.velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
-        # Optionally adjust asteroid speed/difficulty here using env
+        # Asteroid count: Level 1 = 100, each next level +25, max 10 levels
+        total_asteroids = min(100 + (lvl - 1) * 25, 325)
+        # Wave size logic
+        if lvl == 1:
+            wave_size = 5
+        elif lvl < 5:
+            wave_size = 10
+        elif lvl < 10:
+            wave_size = 15
+        else:
+            wave_size = 20
+        # Ensure minimum asteroid size is at least the player's visual size
+        min_size = max(PLAYER_RADIUS, player.rect.width // 2)
+        asteroid_sizes = env.get('asteroid_sizes', [min_size, int(min_size * 1.5), int(min_size * 2)])
+        asteroid_sizes = [size for size in asteroid_sizes if size >= min_size]
+        if not asteroid_sizes:
+            asteroid_sizes = [int(min_size * 2)]
+        # Wave spawning state
+        nonlocal wave_spawned, wave_timer, asteroids_spawned, current_wave_size, total_asteroids_to_spawn
+        wave_spawned = 0
+        wave_timer = 0.0
+        asteroids_spawned = 0
+        current_wave_size = wave_size
+        total_asteroids_to_spawn = total_asteroids
         # Reset player position
         player.rect.center = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
         player.rotation = 0
         # Reset power-ups, bombs, etc. if needed
         # ...
+        # Do NOT spawn any asteroids here; let the wave logic handle it
         return
+    # Wave spawning state variables
+    wave_spawned = 0
+    wave_timer = 0.0
+    asteroids_spawned = 0
+    current_wave_size = 5
+    total_asteroids_to_spawn = 100
+    level_started = False  # New flag to track if asteroids have spawned
 
     show_start_screen()
     print("Starting Asteroids!")
-    print("Screen width: 1280")
-    print("Screen height: 720")
+    # Start the first level so asteroids are present
+    start_level(level)
+    level_cleared = False  # Ensure level does not start as complete
     clock = pygame.time.Clock()
     dt = 0
 
     while True:
+        game_over = False
+        # --- MOVEMENT LOGIC BLOCK ---
+        # Handle input and movement
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return
             if event.type == pygame.KEYDOWN:
                 if event.key == key_bindings['highscores']:
                     show_all_highscores = not show_all_highscores
-                if event.key == key_bindings['mine'] and has_bomb:
-                    # Drop mine at player position
-                    active_bombs.append(Mine(player.position.x, player.position.y))
-                    has_bomb = False
-                if event.key == key_bindings['laser'] and not laser_active:
-                    # Activate laser weapon
-                    laser_weapon = Laser(player)
-                    laser_active = True
                 if event.key == pygame.K_q:
                     show_settings_menu()
         # Power-up timers
-        # Shield lasts until hit, no timer
         if speed_active:
             speed_timer -= dt
             if speed_timer <= 0:
                 speed_active = False
-        screen.fill((0, 0, 0))
+        # Draw background for current level
+        bg_idx = min(level-1, len(background_images)-1)
+        screen.blit(background_images[bg_idx], (0, 0))
         if respawn_timer > 0:
             respawn_timer -= dt
+        # Asteroid wave spawning logic
+        # For level 1, max asteroids on screen is 5
+        if level == 1:
+            max_asteroids_on_screen = 5
+            current_wave_size = 5  # Ensure only 5 spawn per wave
+        else:
+            max_asteroids_on_screen = current_wave_size * 2
+        wave_delay = 2.5  # seconds between waves
+        # Only spawn if we haven't reached the total for the level
+        if asteroids_spawned < total_asteroids_to_spawn:
+            wave_timer += dt
+            # Strict cap: never allow more than 5 asteroids in level 1
+            if wave_timer >= wave_delay and ((level != 1 and len(asteroids) < max_asteroids_on_screen) or (level == 1 and len(asteroids) < 5)):
+                available_slots = 5 - len(asteroids) if level == 1 else max_asteroids_on_screen - len(asteroids)
+                remaining_to_spawn = total_asteroids_to_spawn - asteroids_spawned
+                spawn_count = min(current_wave_size, available_slots, remaining_to_spawn)
+                if spawn_count > 0:
+                    min_size = max(PLAYER_RADIUS, player.rect.width // 2)
+                    asteroid_sizes = [min_size, int(min_size * 1.5), int(min_size * 2)]
+                    for _ in range(spawn_count):
+                        # Spawn asteroids offscreen
+                        edge = random.randint(0, 3)
+                        if edge == 0:
+                            ax = -60
+                            ay = random.randint(0, SCREEN_HEIGHT)
+                        elif edge == 1:
+                            ax = SCREEN_WIDTH + 60
+                            ay = random.randint(0, SCREEN_HEIGHT)
+                        elif edge == 2:
+                            ax = random.randint(0, SCREEN_WIDTH)
+                            ay = -60
+                        else:
+                            ax = random.randint(0, SCREEN_WIDTH)
+                            ay = SCREEN_HEIGHT + 60
+                        radius = random.choice(asteroid_sizes)
+                        asteroid = Asteroid(ax, ay, radius)
+                        angle = random.uniform(0, 2 * math.pi)
+                        speed = random.uniform(80, 180)
+                        asteroid.velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
+                    asteroids_spawned += spawn_count
+                    wave_timer = 0.0
+                    level_started = True
         for obj in updatable:
             obj.update(dt)
-        # Update laser weapon
-        if laser_active and laser_weapon:
-            if laser_weapon.update(dt, asteroids):
-                laser_active = False
-                laser_weapon = None
+
+        # --- WEAPON LOGIC BLOCK ---
+        # Handle weapon input and update
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == key_bindings['mine'] and has_bomb:
+                    active_bombs.append(Mine(player.position.x, player.position.y))
+                    has_bomb = False
+
+        # Laser feature removed
+
+        # Shot collision logic
+        for asteroid in asteroids:
+            for shot in shots:
+                if hasattr(asteroid, 'collides_with') and hasattr(shot, 'collides_with') and asteroid.collides_with(shot):
+                    destroy_asteroid(asteroid)
+                    shot.kill()
 
         # Multi-level system: check if level cleared
-        if not asteroids and not level_cleared:
+        if level_started and not asteroids and not level_cleared:
             level_cleared = True
-            # Show level complete message
             level_font = pygame.font.SysFont(None, 64)
             msg = level_font.render(f"Level {level} Complete!", True, (0,255,0))
             screen.blit(msg, (SCREEN_WIDTH//2 - msg.get_width()//2, SCREEN_HEIGHT//2 - 100))
@@ -336,9 +433,8 @@ def main():
             pygame.time.wait(1500)
             level += 1
             if level > max_level:
-                # Game completed
                 win_font = pygame.font.SysFont(None, 64)
-                win_msg = win_font.render("You Win!", True, (255,255,0))
+                win_msg = win_font.render("You Are Victorious!", True, (255,255,0))
                 screen.blit(win_msg, (SCREEN_WIDTH//2 - win_msg.get_width()//2, SCREEN_HEIGHT//2))
                 pygame.display.flip()
                 pygame.time.wait(2500)
@@ -346,66 +442,53 @@ def main():
                 return
             start_level(level)
             level_cleared = False
-        # Power-up and bomb drop logic
-        # Drop bomb
-        if random.random() < 0.002 and not has_bomb and len(bomb_drops) < 1:
-            bx = random.randint(100, SCREEN_WIDTH-100)
-            by = random.randint(100, SCREEN_HEIGHT-100)
-            bomb = pygame.sprite.Sprite()
-            bomb.image = bomb_icon
-            bomb.rect = bomb.image.get_rect(center=(bx, by))
-            bomb.position = pygame.Vector2(bx, by)
-            bomb.type = 'bomb'
-            bomb_drops.add(bomb)
-        # Drop shield power-up
-        if random.random() < 0.001 and not shield_active and not any(getattr(p, 'type', '') == 'shield' for p in powerup_drops):
-            bx = random.randint(100, SCREEN_WIDTH-100)
-            by = random.randint(100, SCREEN_HEIGHT-100)
-            shield = pygame.sprite.Sprite()
-            shield.image = shield_icon
-            shield.rect = shield.image.get_rect(center=(bx, by))
-            shield.position = pygame.Vector2(bx, by)
-            shield.type = 'shield'
-            powerup_drops.add(shield)
-        # Drop speed power-up
-        if random.random() < 0.001 and not speed_active and not any(getattr(p, 'type', '') == 'speed' for p in powerup_drops):
-            bx = random.randint(100, SCREEN_WIDTH-100)
-            by = random.randint(100, SCREEN_HEIGHT-100)
-            speed = pygame.sprite.Sprite()
-            speed.image = speed_icon
-            speed.rect = speed.image.get_rect(center=(bx, by))
-            speed.position = pygame.Vector2(bx, by)
-            speed.type = 'speed'
-            powerup_drops.add(speed)
-        # Bomb pickup
-        for bomb in list(bomb_drops):
-            if player.position.distance_to(bomb.position) < PLAYER_RADIUS + 20:
-                has_bomb = True
-                bomb_drops.remove(bomb)
-        # Power-up pickup
-        for p in list(powerup_drops):
-            if player.position.distance_to(p.position) < PLAYER_RADIUS + 20:
-                if p.type == 'shield':
-                    shield_active = True
-                elif p.type == 'speed':
-                    speed_active = True
-                    speed_timer = 10
-                powerup_drops.remove(p)
-        # Bomb drop logic
-        if random.random() < 0.002 and not has_bomb and len(bomb_drops) < 1:
-            # Drop a bomb somewhere random
-            bx = random.randint(100, SCREEN_WIDTH-100)
-            by = random.randint(100, SCREEN_HEIGHT-100)
-            bomb = pygame.sprite.Sprite()
-            bomb.image = bomb_icon
-            bomb.rect = bomb.image.get_rect(center=(bx, by))
-            bomb.position = pygame.Vector2(bx, by)
-            bomb_drops.add(bomb)
-        # Bomb pickup
-        for bomb in list(bomb_drops):
-            if player.position.distance_to(bomb.position) < PLAYER_RADIUS + 20:
-                has_bomb = True
-                bomb_drops.remove(bomb)
+            level_started = False  # Reset for next level
+        # Power-up and bomb drop logic (consolidated, only during active gameplay)
+        if not level_cleared and not game_over:
+            # Drop bomb (relax condition: allow more frequent drops if none present)
+            if random.random() < 0.01 and not has_bomb and len(bomb_drops) < 1:
+                bx = random.randint(100, SCREEN_WIDTH-100)
+                by = random.randint(100, SCREEN_HEIGHT-100)
+                bomb = pygame.sprite.Sprite()
+                bomb.image = bomb_icon
+                bomb.rect = bomb.image.get_rect(center=(bx, by))
+                bomb.position = pygame.Vector2(bx, by)
+                bomb.type = 'bomb'
+                bomb_drops.add(bomb)
+            # Drop shield power-up (relax condition: allow more frequent drops if none present)
+            if random.random() < 0.005 and not shield_active and not any(getattr(p, 'type', '') == 'shield' for p in powerup_drops):
+                bx = random.randint(100, SCREEN_WIDTH-100)
+                by = random.randint(100, SCREEN_HEIGHT-100)
+                shield = pygame.sprite.Sprite()
+                shield.image = shield_icon
+                shield.rect = shield.image.get_rect(center=(bx, by))
+                shield.position = pygame.Vector2(bx, by)
+                shield.type = 'shield'
+                powerup_drops.add(shield)
+            # Drop speed power-up
+            if random.random() < 0.001 and not speed_active and not any(getattr(p, 'type', '') == 'speed' for p in powerup_drops):
+                bx = random.randint(100, SCREEN_WIDTH-100)
+                by = random.randint(100, SCREEN_HEIGHT-100)
+                speed = pygame.sprite.Sprite()
+                speed.image = speed_icon
+                speed.rect = speed.image.get_rect(center=(bx, by))
+                speed.position = pygame.Vector2(bx, by)
+                speed.type = 'speed'
+                powerup_drops.add(speed)
+            # Bomb pickup
+            for bomb in list(bomb_drops):
+                if player.position.distance_to(bomb.position) < PLAYER_RADIUS + 20:
+                    has_bomb = True
+                    bomb_drops.remove(bomb)
+            # Power-up pickup
+            for p in list(powerup_drops):
+                if player.position.distance_to(p.position) < PLAYER_RADIUS + 20:
+                    if p.type == 'shield':
+                        shield_active = True
+                    elif p.type == 'speed':
+                        speed_active = True
+                        speed_timer = 10
+                    powerup_drops.remove(p)
         game_over = False
         if respawn_timer <= 0:
             for asteroid in list(asteroids):
@@ -458,18 +541,29 @@ def main():
                         return
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_y:
-                            # Reset game state
+                            # Fully reset game state
                             score = 0
                             lives = 3
+                            level = 1
+                            level_cleared = False
+                            respawn_timer = 0
+                            shield_active = False
+                            speed_active = False
+                            speed_timer = 0
+                            has_bomb = False
+                            active_bombs.clear()
+                            bomb_drops.empty()
+                            powerup_drops.empty()
                             player.rect.center = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
                             player.rotation = 0
-                            respawn_timer = 2.0
                             # Remove all asteroids and shots
                             for a in list(asteroids):
                                 a.kill()
                             for s in list(shots):
                                 s.kill()
                             asteroid_field = AsteroidField()
+                            start_level(level)
+                            level_started = False
                             break
                         if event.key == pygame.K_n:
                             pygame.quit()
@@ -485,36 +579,7 @@ def main():
                         member.draw(screen)
             elif hasattr(obj, 'draw'):
                 obj.draw(screen)
-        # Draw laser weapon
-        if laser_active and laser_weapon:
-            laser_weapon.draw(screen)
-        # Draw bomb drops
-        for bomb in bomb_drops:
-            screen.blit(bomb.image, bomb.rect)
-        # Draw power-up drops
-        for p in powerup_drops:
-            screen.blit(p.image, p.rect)
-        # Draw active bombs
-        for bomb in list(active_bombs):
-            bomb.draw(screen)
-            if bomb.update(dt, asteroids):
-                active_bombs.remove(bomb)
-        # Draw bomb icon if player has one
-        if has_bomb:
-            screen.blit(bomb_icon, (SCREEN_WIDTH-200, 20))
-        # Draw shield effect (blue circle) around player
-        if shield_active:
-            pygame.draw.circle(screen, (0,200,255), (int(player.position.x), int(player.position.y)), PLAYER_RADIUS+12, 3)
-        # Draw speed effect (red tail) behind player
-        if speed_active:
-            tail_length = 40
-            # Pygame rotation 0 is upward, so subtract 90 degrees to get forward
-            angle_rad = math.radians(player.rotation - 270)
-            forward_dx = math.cos(angle_rad)
-            forward_dy = math.sin(angle_rad)
-            start_pos = (int(player.position.x), int(player.position.y))
-            end_pos = (int(player.position.x - forward_dx * tail_length), int(player.position.y - forward_dy * tail_length))
-            pygame.draw.line(screen, (255,0,0), start_pos, end_pos, 6)
+        # Laser feature removed
 
         # Draw score, lives, level, and highscores
         score_surf = FONT.render(f"Score: {score}", True, (255,255,255))
@@ -524,7 +589,7 @@ def main():
         level_surf = FONT.render(f"Level: {level}", True, (0,255,255))
         screen.blit(level_surf, (SCREEN_WIDTH//2 - 60, 20))
         # Show top 3 highscores at bottom right
-        highscores_sorted = sorted(highscores, reverse=True)
+        highscores_sorted = sorted(highscores, key=lambda x: x['score'], reverse=True)
         for i, hs in enumerate(highscores_sorted[:3]):
             hs_surf = FONT.render(f"{i+1}. {hs}", True, (255,255,0))
             screen.blit(hs_surf, (SCREEN_WIDTH - 200, SCREEN_HEIGHT - 40 - 30*i))
@@ -543,9 +608,8 @@ def main():
         for asteroid in asteroids:
             for shot in shots:
                 if hasattr(asteroid, 'collides_with') and hasattr(shot, 'collides_with') and asteroid.collides_with(shot):
-                    asteroid.split()
+                    destroy_asteroid(asteroid)
                     shot.kill()
-                    score += 1
 
 if __name__ == "__main__":
     main()
