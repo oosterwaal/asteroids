@@ -5,6 +5,84 @@ from enemies.asteroid import Asteroid
 from environment.asteroidfield import AsteroidField
 
 def main():
+    def show_start_screen():
+        start_font = pygame.font.SysFont(None, 72)
+        info_font = pygame.font.SysFont(None, 36)
+        waiting = True
+        while waiting:
+            screen.fill((10, 10, 30))
+            title = start_font.render("ASTEROIDS", True, (255,255,255))
+            prompt = info_font.render("Press ENTER to Start", True, (0,255,0))
+            screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, SCREEN_HEIGHT//2 - 120))
+            screen.blit(prompt, (SCREEN_WIDTH//2 - prompt.get_width()//2, SCREEN_HEIGHT//2))
+            pygame.display.flip()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        waiting = False
+                        break
+
+    # Key bindings dictionary
+    key_bindings = {
+        'laser': pygame.K_l,
+        'mine': pygame.K_m,
+        'settings': pygame.K_s,
+        'highscores': pygame.K_h
+    }
+
+    def show_settings_menu():
+        menu_font = pygame.font.SysFont(None, 48)
+        info_font = pygame.font.SysFont(None, 32)
+        selected = None
+        running = True
+        while running:
+            screen.fill((20, 20, 40))
+            title = menu_font.render("Settings: Change Key Bindings", True, (255,255,255))
+            screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, 100))
+            y = 200
+            for action, key in key_bindings.items():
+                key_name = pygame.key.name(key)
+                txt = info_font.render(f"{action.capitalize()}: {key_name}", True, (200,200,200) if selected != action else (255,255,0))
+                screen.blit(txt, (SCREEN_WIDTH//2 - 200, y))
+                y += 50
+            prompt = info_font.render("Press UP/DOWN to select, ENTER to change, ESC to exit", True, (180,180,255))
+            screen.blit(prompt, (SCREEN_WIDTH//2 - prompt.get_width()//2, y+30))
+            pygame.display.flip()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                        break
+                    actions = list(key_bindings.keys())
+                    if selected is None:
+                        selected = actions[0]
+                    elif event.key == pygame.K_DOWN:
+                        idx = actions.index(selected)
+                        selected = actions[(idx+1)%len(actions)]
+                    elif event.key == pygame.K_UP:
+                        idx = actions.index(selected)
+                        selected = actions[(idx-1)%len(actions)]
+                    elif event.key == pygame.K_RETURN:
+                        # Wait for next key press
+                        waiting = True
+                        while waiting:
+                            for e in pygame.event.get():
+                                if e.type == pygame.KEYDOWN and e.key != pygame.K_RETURN:
+                                    key_bindings[selected] = e.key
+                                    waiting = False
+                                elif e.type == pygame.QUIT:
+                                    pygame.quit()
+                                    exit()
+        return
+    from player.weapons.laser import Laser
+    laser_active = False
+    laser_weapon = None
     # Power-up state
     shield_active = False
     # shield lasts until hit
@@ -148,13 +226,8 @@ def main():
     def save_highscores():
         with open(HIGHSCORE_FILE, "w") as f:
             json.dump(highscores, f)
-    def add_highscore(new_score):
-        highscores.append(new_score)
-        highscores.sort(reverse=True)
-        del highscores[10:]
-        save_highscores()
-    load_highscores()
-    show_all_highscores = False
+    # Only keep the correct add_highscore function (already defined above)
+    # ...existing code...
 
     player = Player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
     updatable = [player]
@@ -197,7 +270,12 @@ def main():
         for _ in range(num_asteroids):
             ax = random.randint(50, SCREEN_WIDTH-50)
             ay = random.randint(50, SCREEN_HEIGHT-50)
-            Asteroid(ax, ay, size=random.choice(asteroid_sizes))
+            radius = random.choice(asteroid_sizes)
+            asteroid = Asteroid(ax, ay, radius)
+            # Assign random velocity
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(80, 180)
+            asteroid.velocity = pygame.Vector2(math.cos(angle), math.sin(angle)) * speed
         # Optionally adjust asteroid speed/difficulty here using env
         # Reset player position
         player.rect.center = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
@@ -206,10 +284,10 @@ def main():
         # ...
         return
 
+    show_start_screen()
     print("Starting Asteroids!")
     print("Screen width: 1280")
     print("Screen height: 720")
-    
     clock = pygame.time.Clock()
     dt = 0
 
@@ -218,12 +296,18 @@ def main():
             if event.type == pygame.QUIT:
                 return
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_h:
+                if event.key == key_bindings['highscores']:
                     show_all_highscores = not show_all_highscores
-                if event.key == pygame.K_m and has_bomb:
+                if event.key == key_bindings['mine'] and has_bomb:
                     # Drop mine at player position
                     active_bombs.append(Mine(player.position.x, player.position.y))
                     has_bomb = False
+                if event.key == key_bindings['laser'] and not laser_active:
+                    # Activate laser weapon
+                    laser_weapon = Laser(player)
+                    laser_active = True
+                if event.key == pygame.K_q:
+                    show_settings_menu()
         # Power-up timers
         # Shield lasts until hit, no timer
         if speed_active:
@@ -235,6 +319,11 @@ def main():
             respawn_timer -= dt
         for obj in updatable:
             obj.update(dt)
+        # Update laser weapon
+        if laser_active and laser_weapon:
+            if laser_weapon.update(dt, asteroids):
+                laser_active = False
+                laser_weapon = None
 
         # Multi-level system: check if level cleared
         if not asteroids and not level_cleared:
@@ -396,6 +485,9 @@ def main():
                         member.draw(screen)
             elif hasattr(obj, 'draw'):
                 obj.draw(screen)
+        # Draw laser weapon
+        if laser_active and laser_weapon:
+            laser_weapon.draw(screen)
         # Draw bomb drops
         for bomb in bomb_drops:
             screen.blit(bomb.image, bomb.rect)

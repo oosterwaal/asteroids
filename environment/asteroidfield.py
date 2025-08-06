@@ -1,3 +1,12 @@
+def get_level_config(level):
+    """
+    Returns a dict of settings for the given level.
+    You can expand this logic for more advanced level configs.
+    """
+    return {
+        'num_asteroids': min(3 + level * 2, 30),
+        'asteroid_sizes': [2, 3]
+    }
 import pygame
 import random
 from enemies.asteroid import Asteroid
